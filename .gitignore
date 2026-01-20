@@ -1,0 +1,13 @@
+#Go build artifacts
+*.exe
+*.out
+#Go cache
+/pkg/
+bin/
+
+#OS
+.DS_Store
+Thumbs.db
+
+#Editor
+.vscode/
