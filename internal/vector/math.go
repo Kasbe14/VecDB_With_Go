@@ -7,7 +7,7 @@ import (
 
 const epsilon = 1e-12
 
-// Gives only length of the vector
+// Gives only length of the vector in vector space
 func Magnitude(values []float32) float64 {
 	sum := 0.0
 	for _, v := range values {
