@@ -9,23 +9,26 @@ type Vector struct {
 }
 
 // consturctor for immutable vector
-func New(id string, values []float32) (*Vector, error) {
-	if len(values) == 0 {
-		return nil, errors.New("ERROR VECTOR WITH NO DIMENSION : " +
-			"At least one dimension needed")
+func NewVector(id string, vecValues []float32) (*Vector, error) {
+	if len(vecValues) == 0 {
+		return nil, errors.New("a vector must have atleast one dimensions")
 	}
 	//validate vector
-	if err := validateValues(values); err != nil {
+	if err := validateValues(vecValues); err != nil {
 		return nil, err
 	}
-
+	//normalize vector
+	normalVec, err := Normalize(vecValues)
+	if err != nil {
+		return nil, err
+	}
 	//  copying for imutability
-	copied := make([]float32, len(values))
-	copy(copied, values)
+	// copied := make([]float32, len(vecValues))
+	// copy(copied, vecValues)
 	vec := &Vector{
 		id:         id,
-		values:     copied,
-		dimensions: len(copied),
+		values:     normalVec,
+		dimensions: len(normalVec),
 	}
 	return vec, nil
 }
