@@ -91,6 +91,10 @@ func TestLinearIndex_Search(t *testing.T) {
 	if result2[0].Score() < result2[1].Score() {
 		t.Fatalf("results not sorted in descending similarity score")
 	}
+	// test to verify sorted output with id
+	if result2[0].ID() != "v1" {
+		t.Fatalf("expected v1 to be top result, got %s", result2[0].ID())
+	}
 	// nil query test
 	_, err = searchIdx.Search(nil, 5)
 	if err == nil {
@@ -107,7 +111,7 @@ func TestLinearIndex_Search(t *testing.T) {
 	}
 	// k > index size test
 	result3, _ := searchIdx.Search(query, 4)
-	if len(result3) < searchIdx.Size() {
-		t.Fatalf("expected result length equal to index size, got %d", len(result3))
+	if len(result3) != searchIdx.Size() {
+		t.Fatalf("expected %d results , got %d", searchIdx.Size(), len(result3))
 	}
 }
