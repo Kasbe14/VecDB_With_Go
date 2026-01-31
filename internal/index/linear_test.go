@@ -115,3 +115,23 @@ func TestLinearIndex_Search(t *testing.T) {
 		t.Fatalf("expected %d results , got %d", searchIdx.Size(), len(result3))
 	}
 }
+func TestLinearIndex_DimensionLock(t *testing.T) {
+	idx1 := NewLinearIndex()
+	v1, _ := vector.NewVector("v1", []float32{1, 2, 3})
+	if err := idx1.Add(v1); err != nil {
+		t.Fatalf("add failed: %v", err)
+	}
+	//dimension lock set test after vector is added
+	if !idx1.dimLocked {
+		t.Fatalf("expected dimension locked true after first add but got %t", idx1.dimLocked)
+	}
+	// dimension set to first vec dimension added test
+	if idx1.dimension != v1.Dimensions() {
+		t.Fatalf("expected index dimension %d, but got %d", v1.Dimensions(), idx1.dimension)
+	}
+	// dimension mismatched with index test
+	v2, _ := vector.NewVector("v2", []float32{1, 2, 3, 4, 5})
+	if err := idx1.Add(v2); err == nil {
+		t.Fatal("expected index vector dimension mismatch err form add ")
+	}
+}

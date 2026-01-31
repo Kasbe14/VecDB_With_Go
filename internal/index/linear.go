@@ -7,18 +7,29 @@ import (
 	"slices"
 )
 
+// Initial index state is empty, no dimension assigned, no lock
+// after first add index state each index gets its own fixed dimension, lock ensures dimension doesn't change
 type LinearIndex struct {
-	vectors map[string]*v.Vector
+	vectors   map[string]*v.Vector
+	dimension int
+	dimLocked bool
 }
 
 func NewLinearIndex() *LinearIndex {
 	return &LinearIndex{
-		vectors: make(map[string]*v.Vector),
+		vectors:   make(map[string]*v.Vector),
+		dimension: 0,
+		dimLocked: false,
 	}
+}
+
+func (li *LinearIndex) Dimension() int {
+	return li.dimension
 }
 
 func (li *LinearIndex) Add(vec *v.Vector) error {
 	key := vec.ID()
+	vecDim := vec.Dimensions()
 	if key == "" {
 		return errors.New("vector id empty")
 	}
@@ -26,8 +37,14 @@ func (li *LinearIndex) Add(vec *v.Vector) error {
 	if ok {
 		return errors.New("the index key already exists")
 	}
-	li.vectors[vec.ID()] = vec
-
+	// liDimen := li.Dimension()
+	if !li.dimLocked {
+		li.dimLocked = true
+		li.dimension = vecDim
+	} else if li.dimension != vecDim {
+		return errors.New("index and vector dimension mismatch")
+	}
+	li.vectors[key] = vec
 	return nil
 }
 func (li *LinearIndex) Delete(id string) error {
@@ -44,14 +61,17 @@ func (li *LinearIndex) Get(id string) (*v.Vector, bool) {
 	return vec, ok
 }
 func (li *LinearIndex) Search(query *v.Vector, k int) ([]SearchResult, error) {
+	if li.Size() == 0 {
+		return nil, nil
+	}
 	if query == nil {
 		return nil, errors.New("empty query input")
 	}
+	if li.Dimension() != query.Dimensions() {
+		return nil, errors.New("index and query dimension mismatched")
+	}
 	if k <= 0 {
 		return nil, errors.New("invalid input for number of results")
-	}
-	if li.Size() == 0 {
-		return nil, nil
 	}
 	// for k >= index size might need li.Size() memory capacity
 	result := make([]SearchResult, 0, li.Size())
@@ -65,6 +85,7 @@ func (li *LinearIndex) Search(query *v.Vector, k int) ([]SearchResult, error) {
 			score: simScore,
 		})
 	}
+	//sort descending similarity score
 	slices.SortFunc(result, func(a, b SearchResult) int {
 		return cmp.Compare(b.score, a.score)
 	})
