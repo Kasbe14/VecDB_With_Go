@@ -10,14 +10,14 @@ import (
 type VectorID string
 
 // modality represents type of raw input data
-type Modality string
+type DataType string
 
 const (
-	ModalityText  Modality = "text"
-	ModalityImage Modality = "image"
+	DataTypeText  DataType = "text"
+	DataTypeImage DataType = "image"
 	// future
-	// ModalityAudio Modality = "audio"
-	// ModaliyVideo Modality = "video"
+	// DataTypeAudio DataType = "audio"
+	// DataTypeVideo DataType = "video"
 )
 
 // SimilarityMetrics define how vector are compared
@@ -39,8 +39,8 @@ type Embedder interface {
 	// Dimension returns fixed vector dimension produced by this Embedder
 	Dimension() int
 
-	//Modality returns supported input data type (modality : text, image, audio, video)
-	Modality() Modality
+	//DataType returns supported input data type (modality : text, image, audio, video)
+	DataType() DataType
 
 	//Metric returns the similarity metric this metric was trained for..(use same metric for similarity score)
 	Metric() SimilarityMetrics
