@@ -10,6 +10,8 @@ func TestLinearIndex_AddAndGet(t *testing.T) {
 	v, err := vector.NewVector(
 		"mcV1bc",
 		[]float32{1, 2, 3},
+		"text",
+		"cosine",
 	)
 	if err != nil {
 		t.Fatalf("vector creation failed: %v", err)
@@ -34,6 +36,8 @@ func TestLinearIndex_Delete(t *testing.T) {
 	v, err := vector.NewVector(
 		"delV1Test",
 		[]float32{1, 2, 3},
+		"text",
+		"cosine",
 	)
 	if err != nil {
 		t.Fatalf("vector creation failed: %v", err)
@@ -59,10 +63,10 @@ func TestLinearIndex_Delete(t *testing.T) {
 func TestLinearIndex_Search(t *testing.T) {
 	emptyIdx := NewLinearIndex()
 	searchIdx := NewLinearIndex()
-	query, _ := vector.NewVector("q", []float32{1, 2, 3})
-	v1, _ := vector.NewVector("v1", []float32{1, 2, 3})
-	v2, _ := vector.NewVector("v2", []float32{3, 2, 1})
-	v3, _ := vector.NewVector("v3", []float32{1, 1, 2})
+	query, _ := vector.NewVector("q", []float32{1, 2, 3}, "text", "cosine")
+	v1, _ := vector.NewVector("v1", []float32{1, 2, 3}, "text", "cosine")
+	v2, _ := vector.NewVector("v2", []float32{3, 2, 1}, "text", "cosine")
+	v3, _ := vector.NewVector("v3", []float32{1, 1, 2}, "text", "cosine")
 	if err := searchIdx.Add(v1); err != nil {
 		t.Fatalf("add failed: %v", err)
 	}
@@ -117,21 +121,38 @@ func TestLinearIndex_Search(t *testing.T) {
 }
 func TestLinearIndex_DimensionLock(t *testing.T) {
 	idx1 := NewLinearIndex()
-	v1, _ := vector.NewVector("v1", []float32{1, 2, 3})
+	v1, _ := vector.NewVector("v1", []float32{1, 2, 3}, "text", "cosine")
 	if err := idx1.Add(v1); err != nil {
 		t.Fatalf("add failed: %v", err)
 	}
-	//dimension lock set test after vector is added
-	if !idx1.dimLocked {
-		t.Fatalf("expected dimension locked true after first add but got %t", idx1.dimLocked)
+	//Test LinearIndex config lock set after vector is added
+	if !idx1.configLocked {
+		t.Fatalf("expected dimension locked true after first add but got %t", idx1.configLocked)
 	}
-	// dimension set to first vec dimension added test
-	if idx1.dimension != v1.Dimensions() {
-		t.Fatalf("expected index dimension %d, but got %d", v1.Dimensions(), idx1.dimension)
+	// Test Index dimension in IndexConfig set to first added vec's dimension
+	if idx1.config.Dimension != v1.Dimensions() {
+		t.Fatalf("expected index dimension %d, but got %d", v1.Dimensions(), idx1.config.Dimension)
 	}
-	// dimension mismatched with index test
-	v2, _ := vector.NewVector("v2", []float32{1, 2, 3, 4, 5})
+	//Test Index DataType in IndexConfig set to first added vec's DataType
+	if idx1.config.DataType != v1.DataType() {
+		t.Fatalf("expected index data type to be %s, but got %s", v1.DataType(), idx1.config.DataType)
+	}
+	//Test Index SimilarityMetric in IndexConfig set to first added vec's SimilarityMetric
+	if idx1.config.Metric != v1.Metric() {
+		t.Fatalf("expected index similarity metric type to be %s, but got %s", v1.Metric(), idx1.config.Metric)
+	}
+	//Test added vector's  dimension mismatched with index dimension
+	v2, _ := vector.NewVector("v2", []float32{1, 2, 3, 4, 5}, "image", "dot")
 	if err := idx1.Add(v2); err == nil {
 		t.Fatal("expected index vector dimension mismatch err form add ")
+	}
+	//Test if mismatched data type vector gets added to index
+	v3, _ := vector.NewVector("v2", []float32{1, 7, 3}, "image", "cosine")
+	if err := idx1.Add(v3); err == nil {
+		t.Fatal("vector of mismatched datatype got added to the index")
+	}
+	v4, _ := vector.NewVector("v2", []float32{1, 7, 3}, "text", "dot")
+	if err := idx1.Add(v4); err == nil {
+		t.Fatal("vector of mismatched similarity metric type  got added to the index")
 	}
 }
