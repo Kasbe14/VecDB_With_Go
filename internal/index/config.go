@@ -5,6 +5,7 @@ import (
 )
 
 type IndexConfig struct {
+	IndexType IndexType
 	DataType  v.DataType
 	Metric    v.SimilarityMetric
 	Dimension int
