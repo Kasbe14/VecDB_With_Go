@@ -7,6 +7,14 @@ import (
 //type DataType v.DataType
 //type SimilarityMetric v.SimilarityMetric
 
+type IndexType int
+
+const (
+	IndexLinear IndexType = iota
+	IndexHNSW
+	IndexIVF
+)
+
 type VectorIndex interface {
 	Add(v *v.Vector) error
 	Delete(id string) error
