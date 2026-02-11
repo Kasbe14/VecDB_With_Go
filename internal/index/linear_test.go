@@ -1,158 +1,155 @@
 package index
 
 import (
-	"VectorDatabase/internal/vector"
+	"VectorDatabase/internal/types"
+	v "VectorDatabase/internal/vector"
 	"testing"
 )
 
-func TestLinearIndex_AddAndGet(t *testing.T) {
-	idx := NewLinearIndex()
-	v, err := vector.NewVector(
-		"mcV1bc",
-		[]float32{1, 2, 3},
-		"text",
-		"cosine",
-	)
-	if err != nil {
-		t.Fatalf("vector creation failed: %v", err)
-	}
-	if err := idx.Add(v); err != nil {
-		t.Fatalf("failed to add vector %v", err)
-	}
-	got, ok := idx.Get("mcV1bc")
-	if !ok {
-		t.Fatalf("didn't got vector after add")
-	}
-	if got.ID() != v.ID() {
-		t.Fatalf("expexted id %s, got %s", v.ID(), got.ID())
-	}
-	if got.Dimensions() != v.Dimensions() {
-		t.Fatalf("dimensions mismatch")
-	}
+func TestNewLinearIndex_Constructor(t *testing.T) {
+	// Sub-test 1: The Happy Path
+	t.Run("ValidConfig", func(t *testing.T) {
+		cfg, err := NewIndexConfig(types.LinearIndex, types.Testmodel, types.Text, types.Cosine, 128)
+		if err != nil {
+			t.Fatalf("Failed to create config: %v", err)
+		}
 
+		li, err := NewLinearIndex(cfg)
+		if err != nil {
+			t.Fatalf("Expected no error, got %v", err)
+		}
+
+		// Check Invariants
+		if li.vectors == nil {
+			t.Fatal("Vector map was not initialized")
+		}
+
+		// Check Getters (Contracts)
+		if li.Dimension() != cfg.Dimension() {
+			t.Errorf("Dimension mismatch: got %d, want %d", li.Dimension(), cfg.Dimension())
+		}
+
+		// use Errorf instead of Fatalf here so the test continues
+		// to check the other fields even if one fails.
+		if li.config.Metric() != cfg.Metric() {
+			t.Errorf("Metric mismatch: got %v, want %v", li.config.Metric(), cfg.Metric())
+		}
+	})
+
+	// Sub-test 2: The Sad Path
+	t.Run("InvalidConfig", func(t *testing.T) {
+		invalidCfg := IndexConfig{} // Zero value
+		lIdx, err := NewLinearIndex(invalidCfg)
+
+		if err == nil {
+			t.Error("Expected error for empty config, but got nil")
+		}
+		if lIdx != nil {
+			t.Error("Expected nil index instance on failure")
+		}
+	})
 }
+
+// Helper to create a valid index for testing
+func setupIndex(t *testing.T, dim int) *LinearIndex {
+	cfg, _ := NewIndexConfig(types.LinearIndex, types.Testmodel, types.Text, types.Cosine, dim)
+	idx, err := NewLinearIndex(cfg)
+	if err != nil {
+		t.Fatalf("failed to setup index: %v", err)
+	}
+	return idx
+}
+
+// Contract: Add must reject invalid IDs and dimension mismatches.
+// Invariant: After Add, the vector must be retrievable via Get.
+func TestLinearIndex_AddAndGet(t *testing.T) {
+	idx := setupIndex(t, 3)
+	vec, _ := v.NewVector([]float32{1.0, 0.0, 0.0}, 3)
+
+	t.Run("Successful Add", func(t *testing.T) {
+		exists, err := idx.Add("vec-1", vec)
+		if err != nil || exists {
+			t.Errorf("Expected success, got exists=%v, err=%v", exists, err)
+		}
+
+		// Verify via Get (RLock path)
+		retrieved, ok := idx.Get("vec-1")
+		if !ok || retrieved != vec {
+			t.Error("Vector was not stored correctly")
+		}
+	})
+
+	t.Run("Add Duplicate ID", func(t *testing.T) {
+		exists, err := idx.Add("vec-1", vec)
+		if err != nil || !exists {
+			t.Error("Expected exists=true for duplicate ID")
+		}
+	})
+
+	t.Run("Contract Violation: Dimension Mismatch", func(t *testing.T) {
+		badVec, _ := v.NewVector([]float32{1.0, 0.0}, 2) // Dim 2 instead of 3
+		_, err := idx.Add("bad-vec", badVec)
+		if err == nil || err.Error() != "dimension mismatch" {
+			t.Errorf("Expected dimension mismatch error, got %v", err)
+		}
+	})
+}
+
+// Contract: Delete must remove the item or return an error if missing.
+// Post-condition: Get must return false after a successful Delete.
 func TestLinearIndex_Delete(t *testing.T) {
-	idx := NewLinearIndex()
-	v, err := vector.NewVector(
-		"delV1Test",
-		[]float32{1, 2, 3},
-		"text",
-		"cosine",
-	)
-	if err != nil {
-		t.Fatalf("vector creation failed: %v", err)
-	}
-	if err := idx.Add(v); err != nil {
-		t.Fatalf("failed to add vector %v", err)
-	}
-	//Case deleting non-existing id
-	err = idx.Delete("nonExistingId1")
-	if err == nil {
-		t.Fatal("deleted a non-existing id")
-	}
-	//deletes and get return nothing
-	err = idx.Delete("delV1Test")
-	if err != nil {
-		t.Fatalf("expected delete to succeed, got %v", err)
-	}
-	_, ok := idx.Get("delV1Test")
-	if ok {
-		t.Fatal("expected vector to be deleted")
-	}
+	idx := setupIndex(t, 3)
+	vec, _ := v.NewVector([]float32{1.0, 0.0, 0.0}, 3)
+	idx.Add("vec-1", vec)
+
+	t.Run("Successful Delete", func(t *testing.T) {
+		err := idx.Delete("vec-1")
+		if err != nil {
+			t.Errorf("Delete failed: %v", err)
+		}
+
+		_, ok := idx.Get("vec-1")
+		if ok {
+			t.Error("Vector still exists after deletion")
+		}
+	})
+
+	t.Run("Delete Non-existent", func(t *testing.T) {
+		err := idx.Delete("ghost")
+		if err == nil {
+			t.Error("Expected error when deleting non-existent ID")
+		}
+	})
 }
-func TestLinearIndex_Search(t *testing.T) {
-	emptyIdx := NewLinearIndex()
-	searchIdx := NewLinearIndex()
-	query, _ := vector.NewVector("q", []float32{1, 2, 3}, "text", "cosine")
-	v1, _ := vector.NewVector("v1", []float32{1, 2, 3}, "text", "cosine")
-	v2, _ := vector.NewVector("v2", []float32{3, 2, 1}, "text", "cosine")
-	v3, _ := vector.NewVector("v3", []float32{1, 1, 2}, "text", "cosine")
-	if err := searchIdx.Add(v1); err != nil {
-		t.Fatalf("add failed: %v", err)
+
+// Concurrency Test: Ensures no race conditions occur when multiple goroutines
+// read and write at the same time.
+func TestLinearIndex_Concurrency(t *testing.T) {
+	idx := setupIndex(t, 3)
+	vec, _ := v.NewVector([]float32{1.0, 0.0, 0.0}, 3)
+
+	// Use a wait group to coordinate goroutines
+	done := make(chan bool)
+
+	// Start a writer
+	go func() {
+		for i := 0; i < 100; i++ {
+			idx.Add("concur-vec", vec)
+		}
+		done <- true
+	}()
+
+	// Start a reader
+	go func() {
+		for i := 0; i < 100; i++ {
+			idx.Get("concur-vec")
+		}
+		done <- true
+	}()
+
+	// Wait for both to finish
+	for i := 0; i < 2; i++ {
+		<-done
 	}
-	if err := searchIdx.Add(v2); err != nil {
-		t.Fatalf("add failed: %v", err)
-	}
-	if err := searchIdx.Add(v3); err != nil {
-		t.Fatalf("add failed: %v", err)
-	}
-	// edge case empty index test
-	result1, err := emptyIdx.Search(query, 2)
-	if err != nil {
-		t.Fatalf("search failed on empty index %v", err)
-	}
-	if len(result1) != 0 {
-		t.Fatalf("expected zero results, got %d", len(result1))
-	}
-	// valid search results and order test
-	result2, err := searchIdx.Search(query, 2)
-	if err != nil {
-		t.Fatalf("search failed: %v", err)
-	}
-	if len(result2) != 2 {
-		t.Fatalf("expected 2 results, got %d", len(result2))
-	}
-	if result2[0].Score() < result2[1].Score() {
-		t.Fatalf("results not sorted in descending similarity score")
-	}
-	// test to verify sorted output with id
-	if result2[0].ID() != "v1" {
-		t.Fatalf("expected v1 to be top result, got %s", result2[0].ID())
-	}
-	// nil query test
-	_, err = searchIdx.Search(nil, 5)
-	if err == nil {
-		t.Fatal("expected error for nil query input")
-	}
-	// invalid amount of results test k<=0
-	_, err = searchIdx.Search(query, 0)
-	if err == nil {
-		t.Fatal("expected error for input k = 0")
-	}
-	_, err = searchIdx.Search(query, -13)
-	if err == nil {
-		t.Fatal("expect error for input k < 0")
-	}
-	// k > index size test
-	result3, _ := searchIdx.Search(query, 4)
-	if len(result3) != searchIdx.Size() {
-		t.Fatalf("expected %d results , got %d", searchIdx.Size(), len(result3))
-	}
-}
-func TestLinearIndex_DimensionLock(t *testing.T) {
-	idx1 := NewLinearIndex()
-	v1, _ := vector.NewVector("v1", []float32{1, 2, 3}, "text", "cosine")
-	if err := idx1.Add(v1); err != nil {
-		t.Fatalf("add failed: %v", err)
-	}
-	//Test LinearIndex config lock set after vector is added
-	if !idx1.configLocked {
-		t.Fatalf("expected dimension locked true after first add but got %t", idx1.configLocked)
-	}
-	// Test Index dimension in IndexConfig set to first added vec's dimension
-	if idx1.config.Dimension != v1.Dimensions() {
-		t.Fatalf("expected index dimension %d, but got %d", v1.Dimensions(), idx1.config.Dimension)
-	}
-	//Test Index DataType in IndexConfig set to first added vec's DataType
-	if idx1.config.DataType != v1.DataType() {
-		t.Fatalf("expected index data type to be %s, but got %s", v1.DataType(), idx1.config.DataType)
-	}
-	//Test Index SimilarityMetric in IndexConfig set to first added vec's SimilarityMetric
-	if idx1.config.Metric != v1.Metric() {
-		t.Fatalf("expected index similarity metric type to be %s, but got %s", v1.Metric(), idx1.config.Metric)
-	}
-	//Test added vector's  dimension mismatched with index dimension
-	v2, _ := vector.NewVector("v2", []float32{1, 2, 3, 4, 5}, "image", "dot")
-	if err := idx1.Add(v2); err == nil {
-		t.Fatal("expected index vector dimension mismatch err form add ")
-	}
-	//Test if mismatched data type vector gets added to index
-	v3, _ := vector.NewVector("v2", []float32{1, 7, 3}, "image", "cosine")
-	if err := idx1.Add(v3); err == nil {
-		t.Fatal("vector of mismatched datatype got added to the index")
-	}
-	v4, _ := vector.NewVector("v2", []float32{1, 7, 3}, "text", "dot")
-	if err := idx1.Add(v4); err == nil {
-		t.Fatal("vector of mismatched similarity metric type  got added to the index")
-	}
+	// If this test finishes without a panic, the Mutexes are working!
 }

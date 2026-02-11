@@ -4,66 +4,56 @@ import (
 	v "VectorDatabase/internal/vector"
 	"cmp"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 )
 
 // Initial index state is empty, no dimension assigned, no lock
-// after first add index state each index gets its own fixed dimension, lock ensures dimension doesn't change
+// after first add index state each index gets its own fixed dimension,
+// IndexConfig is now Imutable and index is schema driven not data driven i.e first IndexConfig structure is defined
 type LinearIndex struct {
-	mu           sync.RWMutex
-	vectors      map[string]*v.Vector
-	config       IndexConfig
-	configLocked bool
+	mu      sync.RWMutex
+	vectors map[string]*v.Vector
+	config  IndexConfig
 }
 
-// initial empty index doesn't have any config i.e no identity
-func NewLinearIndex() *LinearIndex {
-	return &LinearIndex{
-		mu:           sync.RWMutex{},
-		vectors:      make(map[string]*v.Vector),
-		configLocked: false,
+// Index must know its invariants at birth, IndexConfig enforces invariants
+func NewLinearIndex(cfg IndexConfig) (*LinearIndex, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("failed to initialize linear index: %w", err)
 	}
+	return &LinearIndex{
+		mu:      sync.RWMutex{},
+		vectors: make(map[string]*v.Vector),
+		config:  cfg,
+	}, nil
 }
 func (li *LinearIndex) Dimension() int {
 	li.mu.RLock()
 	defer li.mu.RUnlock()
-	return li.config.Dimension
+	return li.config.Dimension()
 }
 
-func (li *LinearIndex) Add(vec *v.Vector) error {
+// Returns true if vector already exist else error
+func (li *LinearIndex) Add(id string, vec *v.Vector) (bool, error) {
 	li.mu.Lock()
 	defer li.mu.Unlock()
-	key := vec.ID()
-	// TODO IN VECTORS API FOR DataType and SimilarityMetric
-	vecDataType := vec.DataType()
-	vecSimMetric := vec.Metric()
-	vecDim := vec.Dimensions()
-	if key == "" {
-		return errors.New("vector id empty")
+	if id == "" {
+		return false, errors.New("vector id empty")
 	}
-	_, ok := li.vectors[key]
+	if vec == nil {
+		return false, errors.New("empty vector")
+	}
+	if li.config.Dimension() != vec.Dimensions() {
+		return false, errors.New("dimension mismatch")
+	}
+	_, ok := li.vectors[id]
 	if ok {
-		return errors.New("the index key already exists")
+		return true, nil
 	}
-	if !li.configLocked {
-		li.config.Dimension = vecDim
-		li.config.DataType = vecDataType
-		li.config.Metric = vecSimMetric
-		li.configLocked = true
-	} else {
-		if li.config.Dimension != vecDim {
-			return errors.New("index and vector dimension mismatch")
-		}
-		if li.config.DataType != vecDataType {
-			return errors.New("data type mismatch")
-		}
-		if li.config.Metric != vecSimMetric {
-			return errors.New("similarity mismatch")
-		}
-	}
-	li.vectors[key] = vec
-	return nil
+	li.vectors[id] = vec
+	return false, nil
 }
 func (li *LinearIndex) Delete(id string) error {
 	li.mu.Lock()
@@ -71,10 +61,10 @@ func (li *LinearIndex) Delete(id string) error {
 	_, ok := li.vectors[id]
 	if !ok {
 		return errors.New("vector doesn't exist in index")
-	} else {
-		delete(li.vectors, id)
-		return nil
 	}
+	delete(li.vectors, id)
+	return nil
+
 }
 func (li *LinearIndex) Get(id string) (*v.Vector, bool) {
 	li.mu.RLock()
@@ -94,12 +84,12 @@ func (li *LinearIndex) Search(query *v.Vector, k int) ([]SearchResult, error) {
 	if li.Dimension() != query.Dimensions() {
 		return nil, errors.New("index and query dimension mismatched")
 	}
-	if li.config.DataType != query.DataType() {
-		return nil, errors.New("index and vector data type mismatch")
-	}
-	if li.config.Metric != query.Metric() {
-		return nil, errors.New("index and query similarity metric mismatch")
-	}
+	// if li.config.DataType != query.DataType() {
+	// 	return nil, errors.New("index and vector data type mismatch")
+	// }
+	// if li.config.Metric != query.Metric() {
+	// 	return nil, errors.New("index and query similarity metric mismatch")
+	// }
 	if k <= 0 {
 		return nil, errors.New("invalid input for number of results")
 	}
